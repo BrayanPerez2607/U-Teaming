@@ -8,17 +8,19 @@ export class TeamController {
   // Obtener todos los equipos
   static getTeams = async (req: Request, res: Response) => {
     try {
-      const userId = Number(req.query.userId);  // o lee de req.body o req.user si tuvieras login
       const repo = getRepository(Team);
+
+      // Ejecutar la consulta para obtener todos los equipos
       const teams = await repo
-      .createQueryBuilder('team')
-      .leftJoin('team.members', 'tm')
-      .where('team.created_by = :uid OR tm.user_id = :uid', { uid: userId })
-      .getMany();
+        .createQueryBuilder('team')
+        .leftJoinAndSelect('team.members', 'tm') // Incluye los miembros del equipo
+        .leftJoinAndSelect('team.created_by', 'creator') // Incluye el creador del equipo
+        .getMany();
+
       return res.json(teams);
     } catch (e) {
-      console.error(e);
-      return res.status(500).json({ message: 'Error obteniendo equipos', e });
+      console.error('Error obteniendo equipos:', e);
+      return res.status(500).json({ message: 'Error obteniendo equipos', error: e });
     }
   };
 
@@ -44,24 +46,31 @@ export class TeamController {
   static createTeam = async (req: Request, res: Response) => {
     try {
       const { name, description, created_by } = req.body;
-      if (!created_by) {
-        return res.status(400).json({ message: 'Debe enviar created_by' });
+
+      if (!created_by || typeof created_by !== 'number') {
+        return res.status(400).json({ message: 'Debe enviar un created_by válido' });
       }
+
       const userRepo = getRepository(User);
-      const creator = await userRepo.findOne(created_by);
+      const creator = await userRepo.findOne({ where: { idUsers: created_by } });
+
       if (!creator) {
         return res.status(404).json({ message: 'Usuario creador no existe' });
       }
+
       const teamRepo = getRepository(Team);
       const team = teamRepo.create({
         name,
         description,
-        created_by: creator
+        created_by: creator,
       });
+
+      console.log('Equipo a guardar:', team);
+
       const saved = await teamRepo.save(team);
       return res.status(201).json(saved);
     } catch (error) {
-      console.error(error);
+      console.error('Error al crear equipo:', error);
       return res.status(500).json({ message: 'Error al crear equipo', error });
     }
   };
@@ -117,7 +126,11 @@ export class TeamController {
       const team = await teamRepo.findOne({ where: { idTeams: Number(teamId) } });
       if (!team) return res.status(404).json({ message: 'Equipo no existe' });
 
-      const user = await userRepo.findOne(user_id);
+      if (!user_id || typeof user_id !== 'number') {
+        return res.status(400).json({ message: 'Debe enviar un user_id válido' });
+      }
+
+      const user = await userRepo.findOne({ where: { idUsers: user_id } }); // Corrección aquí
       if (!user) return res.status(404).json({ message: 'Usuario no existe' });
 
       const tmRepo = getRepository(TeamMember);
